@@ -315,7 +315,7 @@ int emcAxisSetJerk(int axis, double jerk)
 	return 0;
     }
     if (jerk < 0.0) {
-	acc = 0.0;
+	jerk = 0.0;
     }
     axis_jerk[axis] = jerk;
     emcmotCommand.command = EMCMOT_SET_JOINT_JERK;

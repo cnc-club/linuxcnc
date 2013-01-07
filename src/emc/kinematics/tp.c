@@ -574,23 +574,26 @@ int tpAddCircle(TP_STRUCT * tp, EmcPose end,
     return 0;
 }
 
-void tcRunCycle(TP_STRUCT *tp, TC_STRUCT *tc) 
+void tcRunCycle(TP_STRUCT *tp, TC_STRUCT *tc, double *v, int *on_final_decel) 
 {
 	if(!tc->blending) tc->vel_at_blend_start = tc->currentvel;
 
 	double jerk_time = ceil(tc->maxaccel/tc->jerk);
 	double jerk_vel = 0.5 * tc->jerk * jerk_time * jerk_time;
-	double deccel_dist = 0.;
 	double t = 0.;
-	double v = tc->currentvel;
+	double vel = tc->currentvel;
 	double accel = tc->current_accel;
 	double d2=0.,d4=0.,d5=0.,d6=0.;	 
-
+    double t_deccel, v_deccel;
+    double jerk;
+    
+    
 	/* Get decel_dist */
 	if (accel > 0.){ // we are accelerating now  
-		t = ceil(tc->accel/tc->jerk);  // max = maxaccel/jerk in any case
-		d2 = tc->currentvel * t2 + 0.5 * accel * t2 * t2 - 1.0/6.0 * tc->jerk * t2 * t2 * t2;
-		v += accel * t - 0.5 * tc->jerk * t * t;  // get velocity add after stopping acceleration
+		t = ceil(tc->current_accel/tc->jerk);  // max = maxaccel/jerk in any case
+		jerk = tc->current_accel/t;
+		d2 = tc->currentvel * t + 0.5 * accel * t * t - 1.0/6.0 * jerk * t * t * t;
+		vel += accel * t - 0.5 * jerk * t * t;  // get velocity add after stopping acceleration
 		accel = 0.; // after finishing acceleration accel will be 0
 	}
 			
@@ -602,26 +605,33 @@ void tcRunCycle(TP_STRUCT *tp, TC_STRUCT *tc)
 		  |------*----|---------|-----------|	  */
 	
 	t_deccel = ceil( -accel / tc->jerk);	 // get the time, we have been deccelerated
-	v_deccel = v - accel*t_deccel - tc->jerk*t_deccel*t_deccel;  // v_deccel before decceleration started
+	jerk = -accel/t_deccel;
+	v_deccel = vel - accel*t_deccel - jerk*t_deccel*t_deccel;  // v_deccel before decceleration started
 	
 	if (t_deccel <= 2.0*jerk_time)  // no need to decel at max accel
 	{
-		t = (v_deccel/tc->jerk); // time to deccelerate to half v_deccel
-		d6 = 0.5*v_deccel*t - 0.5*(t*tc->jerk)*t*t + 1.0/6.0*tc->jerk*t*t*t // S6
+		t = pmSqrt(v_deccel/tc->jerk); // time to deccelerate to half v_deccel
+		jerk = v_deccel/t/t;
+		d6 = 0.5*v_deccel*t - 0.5*(t*jerk)*t*t + 1.0/6.0*jerk*t*t*t; // S6
 		t = t-t_deccel; // S4 time
-		if (t>0) {d4 = v*t - 0.5*accel*t*t + 1.0/6.0*tc->jerk*t*t*t;} //S4
+		if (t>0) {
+		        jerk = accel/t;
+		        d4 = vel*t - 0.5*accel*t*t + 1.0/6.0*jerk*t*t*t;
+		    } //S4
 	}
 	else {
-		t = (tc->maxaccel - (-accel))/tc->jerk; // S4 #TODO add ceil????
-		d4 = v*t - 0.5*accel*t*t - 1.0/6.0*tc->jerk*t*t*t; // S4
-		v += accel*t - 0.5*tc->jerk*t*t;
+		t = ceil(tc->maxaccel - (-accel))/tc->jerk; // S4 #TODO add ceil????
+		jerk = (tc->maxaccel - (-accel))/t;
+		d4 = vel*t - 0.5*accel*t*t - 1.0/6.0*jerk*t*t*t; // S4
+		vel += accel*t - 0.5*jerk*t*t;
 		
-		t = (v-jerk_vel)/tc->maxaccel; // S5 #TODO add ceil????
-		d5 = v*t - 0.5*tc->maxaccel*t*t; 
-		v += - tc->maxaccel*t;
+		t = ceil(vel-jerk_vel)/tc->maxaccel; // S5 #TODO add ceil????
+		d5 = vel*t - 0.5*tc->maxaccel*t*t; 
+		vel += - tc->maxaccel*t;
 		
 		t = jerk_time; // S6
-		d6 = deccel_vel*t - 0.5*tc->maxaccel*t*t + 1.0/6.0*tc->jerk*t*t*t;
+		jerk = tc->maxaccel/jerk_time;
+		d6 = vel*t - 0.5*tc->maxaccel*t*t + 1.0/6.0*jerk*t*t*t;
 	}
 	
 	// now we have deccel dist d2+d4+d5+d6!!! So, only thing we need to get do we have to +jerk or to -jerk
@@ -647,31 +657,34 @@ void tcRunCycle(TP_STRUCT *tp, TC_STRUCT *tc)
 		accel = -tc->maxaccel;
 	}
 	
-	v = tc->currentvel + accel;
-	if(v > tc->reqvel * tc->feed_override) v = tc->reqvel * tc->feed_override;	 // clamp vel 
-	if(v > tc->maxvel) v = tc->maxvel;	  // clamp vel 
+	vel = tc->currentvel + accel;
+		
+	if(vel > tc->reqvel * tc->feed_override) vel = tc->reqvel * tc->feed_override;	 // clamp vel 
+	if(vel > tc->maxvel) vel = tc->maxvel;	  // clamp vel 
+
 
 	// now let's get real  accel and jerk
-	accel = tc->currentvel-v;
-	jerk = tc->current_accel-accel;
-	
+	accel = vel-tc->currentvel;
+	jerk = accel-tc->current_accel;
+//	vel = 0.001;
+//	accel = 0.001;
+//    jerk = 0.001;
 	// and pos
-	tc->progress += v + 0.5*accel + 1.0/6.0*jerk;
+	tc->progress += vel + 0.5*accel + 1.0/6.0*jerk;
 	
 	// check progress
-	if (tc->progress > tc->target or v<0.0) { 
-		v = tc->target - tc->progress;
-		accel = tc->currentvel-v;
+	if (tc->progress > tc->target || vel<0.0) { 
+		vel = tc->target - tc->progress;
+		accel = tc->currentvel-vel;
 		jerk = tc->current_accel-accel;
 		tc->progress = tc->target;
 	}
 	
-	tc->currentvel = v;
+	tc->currentvel = vel;
 	tc->current_accel = accel;
 
-	  if(v) *v = v;  //  left from original 
-	  ////// what is that ???
-	  // if(on_final_decel) *on_final_decel = fabs(maxnewvel - v) < 0.001; //  left from original 
+	  if(v) *v = vel; 
+	  if(on_final_decel) *on_final_decel = tc->target - tc->progress < d6+d5+d4+d2 ; // we are deccelerating if dist is smaller! 
 }
 
 

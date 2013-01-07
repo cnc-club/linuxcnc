@@ -42,6 +42,7 @@ double axis_max_velocity[EMC_AXIS_MAX] = { 1.0 };	/*! \todo FIXME - I think
 							   these should be
 							   0.0 */
 double axis_max_acceleration[EMC_AXIS_MAX] = { 1.0 };
+double axis_jerk[EMC_AXIS_MAX] = { 1.0 };
 
 EmcPose tool_change_position;	/* no defaults */
 unsigned char have_tool_change_position = 0;	/* default is 'not there' */

@@ -1002,7 +1002,7 @@ check_stuff ( "before command_handler()" );
 	    joint->acc_limit = emcmotCommand->acc;
 	    break;
 
-	case EMCMOT_SET_JOINT_ACC_LIMIT:
+	case EMCMOT_SET_JOINT_JERK:
 	    rtapi_print_msg(RTAPI_MSG_DBG, "SET_JOINT_JERK");
 	    rtapi_print_msg(RTAPI_MSG_DBG, " %d", joint_num);
 	    emcmot_config_change();

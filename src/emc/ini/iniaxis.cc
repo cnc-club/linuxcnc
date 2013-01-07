@@ -98,6 +98,7 @@ static int loadAxis(int axis, EmcIniFile *axisIniFile)
     int comp_file_type; //type for the compensation file. type==0 means nom, forw, rev. 
     double maxVelocity;
     double maxAcceleration;
+    double jerk;
     double ferror;
 
     // compose string to match, axis = 0 -> AXIS_0, etc.
@@ -244,11 +245,11 @@ static int loadAxis(int axis, EmcIniFile *axisIniFile)
 
 		// set jerk for S curve motions
         jerk = DEFAULT_AXIS_JERK;
-        axisIniFile->Find(&maxAcceleration, "JERK", axisString);
+        axisIniFile->Find(&jerk, "JERK", axisString);
 
-        if (0 != emcAxisSetJerk(axis, maxAcceleration)) {
+        if (0 != emcAxisSetJerk(axis, jerk)) {
             if (emc_debug & EMC_DEBUG_CONFIG) {
-                rcs_print_error("bad return from emcAxisSetMaxAcceleration\n");
+                rcs_print_error("bad return from emcAxisSetJerk\n");
             }
             return -1;
         }
