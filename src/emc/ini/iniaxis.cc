@@ -242,6 +242,19 @@ static int loadAxis(int axis, EmcIniFile *axisIniFile)
             return -1;
         }
 
+		// set jerk for S curve motions
+        jerk = DEFAULT_AXIS_JERK;
+        axisIniFile->Find(&maxAcceleration, "JERK", axisString);
+
+        if (0 != emcAxisSetJerk(axis, maxAcceleration)) {
+            if (emc_debug & EMC_DEBUG_CONFIG) {
+                rcs_print_error("bad return from emcAxisSetMaxAcceleration\n");
+            }
+            return -1;
+        }
+
+
+
         comp_file_type = 0;             // default
         axisIniFile->Find(&comp_file_type, "COMP_FILE_TYPE", axisString);
 
