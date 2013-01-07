@@ -574,58 +574,106 @@ int tpAddCircle(TP_STRUCT * tp, EmcPose end,
     return 0;
 }
 
-void tcRunCycle(TP_STRUCT *tp, TC_STRUCT *tc, double *v, int *on_final_decel) {
-    double discr, maxnewvel, newvel, newaccel=0;
-    if(!tc->blending) tc->vel_at_blend_start = tc->currentvel;
+void tcRunCycle(TP_STRUCT *tp, TC_STRUCT *tc) 
+{
+	if(!tc->blending) tc->vel_at_blend_start = tc->currentvel;
 
-    discr = 0.5 * tc->cycle_time * tc->currentvel - (tc->target - tc->progress);
-    if(discr > 0.0) {
-        // should never happen: means we've overshot the target
-        newvel = maxnewvel = 0.0;
-    } else {
-        discr = 0.25 * pmSq(tc->cycle_time) - 2.0 / tc->maxaccel * discr;
-        newvel = maxnewvel = -0.5 * tc->maxaccel * tc->cycle_time + 
-            tc->maxaccel * pmSqrt(discr);
-    }
-    if(newvel <= 0.0) {
-        // also should never happen - if we already finished this tc, it was
-        // caught above
-        newvel = newaccel = 0.0;
-        tc->progress = tc->target;
-    } else {
-        // constrain velocity
-        if(newvel > tc->reqvel * tc->feed_override) 
-            newvel = tc->reqvel * tc->feed_override;
-        if(newvel > tc->maxvel) newvel = tc->maxvel;
+	double jerk_time = ceil(tc->maxaccel/tc->jerk);
+	double jerk_vel = 0.5 * tc->jerk * jerk_time * jerk_time;
+	double deccel_dist = 0.;
+	double t = 0.;
+	double v = tc->currentvel;
+	double accel = tc->current_accel;
+	double d2=0.,d4=0.,d5=0.,d6=0.;	 
 
-        // if the motion is not purely rotary axes (and therefore in angular units) ...
-        if(!(tc->motion_type == TC_LINEAR && tc->coords.line.xyz.tmag_zero && tc->coords.line.uvw.tmag_zero)) {
-            // ... clamp motion's velocity at TRAJ MAX_VELOCITY (tooltip maxvel)
-            // except when it's synced to spindle position.
-            if((!tc->synchronized || tc->velocity_mode) && newvel > tp->vLimit) {
-                newvel = tp->vLimit;
-            }
-        }
+	/* Get decel_dist */
+	if (accel > 0.){ // we are accelerating now  
+		t = ceil(tc->accel/tc->jerk);  // max = maxaccel/jerk in any case
+		d2 = tc->currentvel * t2 + 0.5 * accel * t2 * t2 - 1.0/6.0 * tc->jerk * t2 * t2 * t2;
+		v += accel * t - 0.5 * tc->jerk * t * t;  // get velocity add after stopping acceleration
+		accel = 0.; // after finishing acceleration accel will be 0
+	}
+			
+	// now get decceleration time 
+	// accel<=0 now. 
+	
+	/* start	cur		 decel				stop 
+		deccel  accel  at maxaccel			decel
+		  |------*----|---------|-----------|	  */
+	
+	t_deccel = ceil( -accel / tc->jerk);	 // get the time, we have been deccelerated
+	v_deccel = v - accel*t_deccel - tc->jerk*t_deccel*t_deccel;  // v_deccel before decceleration started
+	
+	if (t_deccel <= 2.0*jerk_time)  // no need to decel at max accel
+	{
+		t = (v_deccel/tc->jerk); // time to deccelerate to half v_deccel
+		d6 = 0.5*v_deccel*t - 0.5*(t*tc->jerk)*t*t + 1.0/6.0*tc->jerk*t*t*t // S6
+		t = t-t_deccel; // S4 time
+		if (t>0) {d4 = v*t - 0.5*accel*t*t + 1.0/6.0*tc->jerk*t*t*t;} //S4
+	}
+	else {
+		t = (tc->maxaccel - (-accel))/tc->jerk; // S4 #TODO add ceil????
+		d4 = v*t - 0.5*accel*t*t - 1.0/6.0*tc->jerk*t*t*t; // S4
+		v += accel*t - 0.5*tc->jerk*t*t;
+		
+		t = (v-jerk_vel)/tc->maxaccel; // S5 #TODO add ceil????
+		d5 = v*t - 0.5*tc->maxaccel*t*t; 
+		v += - tc->maxaccel*t;
+		
+		t = jerk_time; // S6
+		d6 = deccel_vel*t - 0.5*tc->maxaccel*t*t + 1.0/6.0*tc->jerk*t*t*t;
+	}
+	
+	// now we have deccel dist d2+d4+d5+d6!!! So, only thing we need to get do we have to +jerk or to -jerk
 
-        // get resulting acceleration
-        newaccel = (newvel - tc->currentvel) / tc->cycle_time;
-        
-        // constrain acceleration and get resulting velocity
-        if(newaccel > 0.0 && newaccel > tc->maxaccel) {
-            newaccel = tc->maxaccel;
-            newvel = tc->currentvel + newaccel * tc->cycle_time;
-        }
-        if(newaccel < 0.0 && newaccel < -tc->maxaccel) {
-            newaccel = -tc->maxaccel;
-            newvel = tc->currentvel + newaccel * tc->cycle_time;
-        }
-        // update position in this tc
-        tc->progress += (newvel + tc->currentvel) * 0.5 * tc->cycle_time;
-    }
-    tc->currentvel = newvel;
-    if(v) *v = newvel;
-    if(on_final_decel) *on_final_decel = fabs(maxnewvel - newvel) < 0.001;
+	if (tc->target - tc->progress < d6) {
+		jerk = -tc->jerk;  // deccelerate decceleration
+	} else if (tc->target - tc->progress < d6+d5+d4)
+	{ 
+		jerk = tc->jerk; // accelerate decceleration
+	} else if (tc->target - tc->progress < d6+d5+d4+d2)
+	{	
+		jerk = -tc->jerk; // deccelerate acceleration 
+	} else {
+		jerk = tc->jerk; // accelerate acceleration!!!
+	}
+	
+	// now let's get a 
+	accel = tc->current_accel + jerk; 
+	if (accel > 0 && accel > tc->maxaccel){  // clamp accel
+		accel = tc->maxaccel;
+	}
+	if (accel < 0 && accel < tc->maxaccel){  // clamp accel
+		accel = -tc->maxaccel;
+	}
+	
+	v = tc->currentvel + accel;
+	if(v > tc->reqvel * tc->feed_override) v = tc->reqvel * tc->feed_override;	 // clamp vel 
+	if(v > tc->maxvel) v = tc->maxvel;	  // clamp vel 
+
+	// now let's get real  accel and jerk
+	accel = tc->currentvel-v;
+	jerk = tc->current_accel-accel;
+	
+	// and pos
+	tc->progress += v + 0.5*accel + 1.0/6.0*jerk;
+	
+	// check progress
+	if (tc->progress > tc->target or v<0.0) { 
+		v = tc->target - tc->progress;
+		accel = tc->currentvel-v;
+		jerk = tc->current_accel-accel;
+		tc->progress = tc->target;
+	}
+	
+	tc->currentvel = v;
+	tc->current_accel = accel;
+
+	  if(v) *v = v;  //  left from original 
+	  ////// what is that ???
+	  // if(on_final_decel) *on_final_decel = fabs(maxnewvel - v) < 0.001; //  left from original 
 }
+
 
 
 void tpToggleDIOs(TC_STRUCT * tc) {

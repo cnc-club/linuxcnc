@@ -154,6 +154,8 @@ extern "C" {
 	EMCMOT_SET_VEL_LIMIT,	/* set the max vel for all moves (tooltip) */
 	EMCMOT_SET_JOINT_VEL_LIMIT,	/* set the max joint vel */
 	EMCMOT_SET_JOINT_ACC_LIMIT,	/* set the max joint accel */
+	EMCMOT_SET_JOINT_JERK,	/* set the jerk */
+	
 	EMCMOT_SET_ACC,		/* set the max accel for moves (tooltip) */
 	EMCMOT_SET_TERM_COND,	/* set termination condition (stop, blend) */
 	EMCMOT_SET_NUM_AXES,	/* set the number of joints */ //FIXME-AJ: function needs to get renamed
@@ -475,6 +477,8 @@ Suggestion: Split this in to an Error and a Status flag register..
 	double min_jog_limit;
 	double vel_limit;	/* upper limit of joint speed */
 	double acc_limit;	/* upper limit of joint accel */
+	double jerk;	/* joint jerk */
+	
 	double min_ferror;	/* zero speed following error limit */
 	double max_ferror;	/* max speed following error limit */
 	double home_search_vel;	/* dir/spd to look for home switch */

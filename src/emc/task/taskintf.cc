@@ -308,6 +308,25 @@ int emcAxisSetMaxAcceleration(int axis, double acc)
     return usrmotWriteEmcmotCommand(&emcmotCommand);
 }
 
+int emcAxisSetJerk(int axis, double jerk)
+{
+
+    if (axis < 0 || axis >= EMC_AXIS_MAX) {
+	return 0;
+    }
+    if (jerk < 0.0) {
+	acc = 0.0;
+    }
+    axis_jerk[axis] = jerk;
+    emcmotCommand.command = EMCMOT_SET_JOINT_JERK;
+    emcmotCommand.axis = axis;
+    emcmotCommand.jerk = jerk;
+    return usrmotWriteEmcmotCommand(&emcmotCommand);
+}
+
+
+
+
 /* This function checks to see if any axis or the traj has
    been inited already.  At startup, if none have been inited,
    usrmotIniLoad and usrmotInit must be called first.  At

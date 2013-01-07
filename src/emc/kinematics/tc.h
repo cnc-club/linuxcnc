@@ -75,6 +75,9 @@ typedef struct {
     double feed_override;   // feed override requested by user
     double maxvel;          // max possible vel (feed override stops here)
     double currentvel;      // keep track of current step (vel * cycle_time)
+    double current_accel;      // keep track of current step (vel * cycle_time)
+    double jerk;      // keep track of current step (vel * cycle_time)
+    
     
     int id;                 // segment's serial number
 
